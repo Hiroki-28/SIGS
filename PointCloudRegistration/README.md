@@ -63,17 +63,17 @@ python ./preprocess/02_create_camera_positions.py  # Generates camera_positions.
 
 ### 2. Point Cloud Registration & Merging
 
-★ Using ARKit point clouds only (mainly for indoor scenes)
+- Using ARKit point clouds only (mainly for indoor scenes)
 ```bash
 python 01_arkit_pointcloud_registration.py
 ```
 
-★ Merging ARKit + COLMAP point clouds, processed in the ARKit coordinate system (indoor or outdoor)
+- Merging ARKit + COLMAP point clouds, processed in the ARKit coordinate system (indoor or outdoor)
 ```bash
 python 02_arkit_colmap_registration_in_arkit_coords.py
 ```
 
-★ Merging ARKit + COLMAP point clouds, processed in the COLMAP coordinate system (indoor or outdoor)
+- Merging ARKit + COLMAP point clouds, processed in the COLMAP coordinate system (indoor or outdoor)
 ```bash
 python 03_arkit_colmap_registration_in_colmap_coords.py
 ```
