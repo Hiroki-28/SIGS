@@ -27,7 +27,7 @@ In this study, 3D scene reconstruction was performed using [3D Gaussian Splattin
 
 ### 3D Scene Mesh
 A mesh was further extracted from the reconstructed 3D scene using MILo.
-<img src="docs/images/05_3D_Scene_Mesh.png" alt="3D scene mesh" width="400">
+<img src="docs/images/05_3D_Scene_Mesh.png" alt="3D scene mesh" width="500">
 
 ### Application Example
 An example of using the generated mesh in a VR environment is shown below.
