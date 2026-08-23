@@ -8,6 +8,7 @@ import open3d as o3d
 from utils.colmap_loader import read_extrinsics_binary
 from utils.point_cloud_utils import (
     align_source_to_target_icp,
+    filter_points_by_distance,
     load_colmap_point_cloud,
     preprocess_point_cloud,
     print_point_count,
@@ -16,12 +17,12 @@ from utils.point_cloud_utils import (
     remove_small_clusters_by_dbscan,
     reset_normals,
     save_as_colmap_sparse_model,
-    transform_points_by_colmap_pose,
+    transform_points_by_camera_pose,
 )
 
 
 # Scene directory
-SCENE_NAME = "Outdoor2"
+SCENE_NAME = "Outdoor1"
 INPUT_SCENE_DIR = Path("./input") / SCENE_NAME
 OUTPUT_SCENE_DIR = Path("./output") / SCENE_NAME
 
@@ -38,8 +39,18 @@ OUTPUT_PLY = OUTPUT_SCENE_DIR / "points3D.ply"
 OUTPUT_SPARSE_DIR = OUTPUT_SCENE_DIR / "merged_sparse"
 OUTPUT_SPARSE_DIR.mkdir(parents=True, exist_ok=True)
 
+# Frames to skip
+SKIP_FRAMES = []
+# SKIP_FRAMES = [412, 413, 414]
+
 FRAME_START = 0
 FRAME_END = 540
+
+# ARKit point cloud distance filter
+# Leave this False if you want to keep far points outdoors
+USE_DISTANCE_FILTER = False
+MIN_DISTANCE_M = 0.0
+MAX_DISTANCE_M = 5.0
 
 # Point cloud processing parameters
 # This model's scale is already aligned with ARKit, so meter values are used directly.
@@ -50,6 +61,7 @@ NEAR_THRESHOLD = VOXEL_SIZE
 DBSCAN_EPS = 0.05
 
 APPLY_COLMAP_DOWNSAMPLE = True
+APPLY_DBSCAN_CLUSTER_REMOVAL = True
 APPLY_MERGED_DOWNSAMPLE = True
 APPLY_MERGED_OUTLIER_REMOVAL = False
 
@@ -58,7 +70,7 @@ def build_arkit_point_cloud_in_arkit_world(
     frame_voxel_size: float,
     dbscan_eps: float,
 ) -> o3d.geometry.PointCloud:
-    
+
     # 1. Load point clouds
     length = len(glob.glob(str(INPUT_POINTCLOUD_DIR / "*.ply")))
     point_clouds = [
@@ -68,7 +80,7 @@ def build_arkit_point_cloud_in_arkit_world(
 
     # Load COLMAP images.bin
     cam_extrinsics = read_extrinsics_binary(INPUT_IMAGES_BIN)
-    
+
     # Replace COLMAP image IDs with image names as dictionary keys
     extrinsics_by_name = {
         os.path.splitext(extr.name)[0]: extr
@@ -88,6 +100,10 @@ def build_arkit_point_cloud_in_arkit_world(
             skipped_frames.setdefault("no corresponding image found in images.bin", []).append(frame_no)
             continue
 
+        if frame_no in SKIP_FRAMES:
+            skipped_frames.setdefault("skipped due to an obviously bad point cloud", []).append(frame_no)
+            continue
+
         extr = extrinsics_by_name[image_name]
 
         # Copy the current point cloud
@@ -97,8 +113,21 @@ def build_arkit_point_cloud_in_arkit_world(
             skipped_frames.setdefault("empty point cloud", []).append(frame_no)
             continue
 
+        # Filter points by distance for each frame
+        if USE_DISTANCE_FILTER:
+            current_pcd = filter_points_by_distance(
+                current_pcd,
+                min_distance_m=MIN_DISTANCE_M,
+                max_distance_m=MAX_DISTANCE_M,
+            )
+
+            current_points = np.asarray(current_pcd.points)
+            if len(current_points) == 0:
+                skipped_frames.setdefault("no points after distance filter", []).append(frame_no)
+                continue
+
         # Transform the ARKit point cloud using the COLMAP camera pose
-        transformed_points = transform_points_by_colmap_pose(
+        transformed_points = transform_points_by_camera_pose(
             points_cam_arkit=current_points,
             extr=extr,
         )
@@ -118,12 +147,13 @@ def build_arkit_point_cloud_in_arkit_world(
     # 3. Post-process the merged point cloud
     combined_point_cloud = remove_outliers(combined_point_cloud)
 
-    combined_point_cloud = remove_small_clusters_by_dbscan(
-        combined_point_cloud,
-        eps=dbscan_eps,
-        min_points=30,
-        min_cluster_size=500,
-    )
+    if APPLY_DBSCAN_CLUSTER_REMOVAL:
+        combined_point_cloud = remove_small_clusters_by_dbscan(
+            combined_point_cloud,
+            eps=dbscan_eps,
+            min_points=30,
+            min_cluster_size=500,
+        )
 
     return combined_point_cloud
 

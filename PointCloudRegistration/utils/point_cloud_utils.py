@@ -205,37 +205,33 @@ def filter_points_by_distance(
     return filtered_pcd
 
 
-def transform_points_by_colmap_pose(
+def transform_points_by_camera_pose(
     points_cam_arkit: np.ndarray,
     extr,
     colmap_units_per_meter: float = 1.0,
 ) -> np.ndarray:
     """
-    Transform a point cloud in ARKit camera coordinates into COLMAP world
-    coordinates using a COLMAP camera pose.
+    Transform a point cloud in ARKit camera coordinates into ARKit's
+    world coordinates, or an external world coordinate system, using a
+    COLMAP camera pose `extr` (position and orientation, from images.bin).
 
     ARKit camera coords:
         X right, Y up, Z backward
 
-    COLMAP camera coords:
+    COLMAP's camera-axis convention (required by qvec/tvec):
         X right, Y down, Z forward
-
-    Steps:
-        1. ARKit camera coords -> COLMAP camera coords
-        2. meter -> COLMAP scale (no-op when colmap_units_per_meter=1.0)
-        3. COLMAP camera coords -> COLMAP world coords
     """
     F = np.diag([1.0, -1.0, -1.0])
-    points_cam_colmap = points_cam_arkit @ F.T
+    points_cam = points_cam_arkit @ F.T
 
-    points_cam_colmap = points_cam_colmap * colmap_units_per_meter
+    points_cam = points_cam * colmap_units_per_meter
 
     Rcw = qvec2rotmat(extr.qvec)
     tcw = np.asarray(extr.tvec)
 
-    points_world_colmap = (points_cam_colmap - tcw) @ Rcw
+    points_world = (points_cam - tcw) @ Rcw
 
-    return points_world_colmap
+    return points_world
 
 
 def load_colmap_point_cloud(points3d_bin_path: Path) -> o3d.geometry.PointCloud:
@@ -271,8 +267,25 @@ def align_source_to_target_icp(
     target: o3d.geometry.PointCloud,
     coarse_threshold: float,
     fine_threshold: float,
+    units_per_meter: float = 1.0,
 ) -> o3d.geometry.PointCloud:
     """Align the source point cloud to the target point cloud using two-stage ICP."""
+
+    def rmse_cm(rmse: float) -> float:
+        return rmse / units_per_meter * 100
+
+    # Before ICP evaluation: target (COLMAP) -> source (ARKit)
+    before_eval = o3d.pipelines.registration.evaluate_registration(
+        target,
+        source,
+        coarse_threshold,
+        np.eye(4),
+    )
+
+    print(f"Before ICP fitness: {before_eval.fitness * 100:.2f}%")
+    print(f"Before ICP RMSE: {rmse_cm(before_eval.inlier_rmse):.2f} cm")
+
+    # Coarse ICP: source (ARKit) -> target (COLMAP)
     reg_coarse = o3d.pipelines.registration.registration_icp(
         source,
         target,
@@ -281,9 +294,7 @@ def align_source_to_target_icp(
         o3d.pipelines.registration.TransformationEstimationPointToPoint(),
     )
 
-    print("Coarse ICP fitness:", reg_coarse.fitness)
-    print("Coarse ICP inlier_rmse:", reg_coarse.inlier_rmse)
-
+    # Fine ICP: source (ARKit) -> target (COLMAP)
     reg_fine = o3d.pipelines.registration.registration_icp(
         source,
         target,
@@ -292,12 +303,29 @@ def align_source_to_target_icp(
         o3d.pipelines.registration.TransformationEstimationPointToPoint(),
     )
 
-    print("Fine ICP fitness:", reg_fine.fitness)
-    print("Fine ICP inlier_rmse:", reg_fine.inlier_rmse)
-    print("Fine ICP transformation:\n", reg_fine.transformation)
+    # # Fine ICP: source (ARKit) -> target (COLMAP)
+    # reg_fine = o3d.pipelines.registration.registration_icp(
+    #     source,
+    #     target,
+    #     fine_threshold,
+    #     np.eye(4),
+    #     o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+    # )
 
+    # Apply ICP transformation to ARKit point cloud
     aligned = o3d.geometry.PointCloud(source)
     aligned.transform(reg_fine.transformation)
+
+    # After ICP evaluation: target (COLMAP) -> aligned source (ARKit)
+    after_eval = o3d.pipelines.registration.evaluate_registration(
+        target,
+        aligned,
+        coarse_threshold,
+        np.eye(4),
+    )
+
+    print(f"After ICP fitness: {after_eval.fitness * 100:.2f}%")
+    print(f"After ICP RMSE: {rmse_cm(after_eval.inlier_rmse):.2f} cm")
 
     return aligned
 

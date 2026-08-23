@@ -12,7 +12,7 @@ from utils.point_cloud_utils import (
     remove_small_clusters_by_dbscan,
     reset_normals,
     save_as_colmap_sparse_model,
-    transform_points_by_colmap_pose,
+    transform_points_by_camera_pose,
 )
 
 # Scene directory
@@ -100,7 +100,7 @@ def main():
             continue
 
         # Transform the ARKit point cloud using the COLMAP camera pose
-        transformed_points = transform_points_by_colmap_pose(
+        transformed_points = transform_points_by_camera_pose(
             current_points,
             extr
         )

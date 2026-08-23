@@ -18,7 +18,7 @@ from utils.point_cloud_utils import (
     remove_small_clusters_by_dbscan,
     reset_normals,
     save_as_colmap_sparse_model,
-    transform_points_by_colmap_pose,
+    transform_points_by_camera_pose,
 )
 
 
@@ -72,6 +72,7 @@ DBSCAN_EPS_M = 0.05
 
 APPLY_COLMAP_DOWNSAMPLE = True
 APPLY_ARKIT_DOWNSAMPLE = True
+APPLY_DBSCAN_CLUSTER_REMOVAL = True
 APPLY_ICP = True
 APPLY_MERGED_DOWNSAMPLE = True
 APPLY_MERGED_OUTLIER_REMOVAL = False
@@ -139,7 +140,7 @@ def build_arkit_point_cloud_in_colmap_world(
                 continue
 
         # Transform the ARKit point cloud using the COLMAP camera pose
-        transformed_points = transform_points_by_colmap_pose(
+        transformed_points = transform_points_by_camera_pose(
             points_cam_arkit=current_points,
             extr=extr,
             colmap_units_per_meter=colmap_units_per_meter,
@@ -162,12 +163,13 @@ def build_arkit_point_cloud_in_colmap_world(
     # 3. Post-process the merged point cloud
     combined_point_cloud = remove_outliers(combined_point_cloud)
 
-    combined_point_cloud = remove_small_clusters_by_dbscan(
-        combined_point_cloud,
-        eps=dbscan_eps_colmap,
-        min_points=30,
-        min_cluster_size=500,
-    )
+    if APPLY_DBSCAN_CLUSTER_REMOVAL:
+        combined_point_cloud = remove_small_clusters_by_dbscan(
+            combined_point_cloud,
+            eps=dbscan_eps_colmap,
+            min_points=30,
+            min_cluster_size=500,
+        )
 
     return combined_point_cloud
 
@@ -178,6 +180,7 @@ def merge_colmap_and_arkit_point_clouds(
     coarse_icp_threshold_colmap: float,
     fine_icp_threshold_colmap: float,
     near_threshold_colmap: float,
+    colmap_units_per_meter: float,
 ) -> o3d.geometry.PointCloud:
     
     # 1. Load the COLMAP point cloud
@@ -207,6 +210,7 @@ def merge_colmap_and_arkit_point_clouds(
             target=pcd_colmap,
             coarse_threshold=coarse_icp_threshold_colmap,
             fine_threshold=fine_icp_threshold_colmap,
+            units_per_meter=colmap_units_per_meter,
         )
     else:
         pcd_arkit_aligned = pcd_arkit
@@ -265,6 +269,7 @@ def main() -> None:
         coarse_icp_threshold_colmap=coarse_icp_threshold_colmap,
         fine_icp_threshold_colmap=fine_icp_threshold_colmap,
         near_threshold_colmap=near_threshold_colmap,
+        colmap_units_per_meter=colmap_units_per_meter,
     )
 
     # 4. Visualization
