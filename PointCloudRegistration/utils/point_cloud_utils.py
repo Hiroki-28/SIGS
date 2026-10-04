@@ -215,7 +215,7 @@ def transform_points_by_camera_pose(
     world coordinates, or an external world coordinate system, using a
     COLMAP camera pose `extr` (position and orientation, from images.bin).
 
-    ARKit camera coords:
+    ARKit-based camera coordinates used in this study:
         X right, Y up, Z backward
 
     COLMAP's camera-axis convention (required by qvec/tvec):
@@ -268,17 +268,37 @@ def align_source_to_target_icp(
     coarse_threshold: float,
     fine_threshold: float,
     units_per_meter: float = 1.0,
+    eval_camera_centers: np.ndarray | None = None,
+    eval_max_distance_m: float | None = None,
 ) -> o3d.geometry.PointCloud:
-    """Align the source point cloud to the target point cloud using two-stage ICP."""
+    """
+    Align the source point cloud to the target using two-stage ICP.
+    Evaluate alignment only on target points within the LiDAR range of the camera centers.
+    """
 
     def rmse_cm(rmse: float) -> float:
         return rmse / units_per_meter * 100
 
+    if eval_camera_centers is not None and eval_max_distance_m is not None:
+        camera_centers_pcd = o3d.geometry.PointCloud()
+        camera_centers_pcd.points = o3d.utility.Vector3dVector(eval_camera_centers)
+        dist_to_camera = np.asarray(target.compute_point_cloud_distance(camera_centers_pcd))
+        in_range_mask = dist_to_camera <= (eval_max_distance_m * units_per_meter)
+        eval_target = target.select_by_index(np.where(in_range_mask)[0])
+        print(
+            f"Eval target points within {eval_max_distance_m} m of a camera: "
+            f"{len(eval_target.points)} / {len(target.points)}"
+        )
+    else:
+        eval_target = target
+
+    eval_threshold = fine_threshold
+
     # Before ICP evaluation: target (COLMAP) -> source (ARKit)
     before_eval = o3d.pipelines.registration.evaluate_registration(
-        target,
+        eval_target,
         source,
-        coarse_threshold,
+        eval_threshold,
         np.eye(4),
     )
 
@@ -303,24 +323,15 @@ def align_source_to_target_icp(
         o3d.pipelines.registration.TransformationEstimationPointToPoint(),
     )
 
-    # # Fine ICP: source (ARKit) -> target (COLMAP)
-    # reg_fine = o3d.pipelines.registration.registration_icp(
-    #     source,
-    #     target,
-    #     fine_threshold,
-    #     np.eye(4),
-    #     o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-    # )
-
     # Apply ICP transformation to ARKit point cloud
     aligned = o3d.geometry.PointCloud(source)
     aligned.transform(reg_fine.transformation)
 
     # After ICP evaluation: target (COLMAP) -> aligned source (ARKit)
     after_eval = o3d.pipelines.registration.evaluate_registration(
-        target,
+        eval_target,
         aligned,
-        coarse_threshold,
+        eval_threshold,
         np.eye(4),
     )
 

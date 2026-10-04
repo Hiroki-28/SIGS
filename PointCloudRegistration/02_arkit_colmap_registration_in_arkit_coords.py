@@ -9,6 +9,7 @@ from utils.colmap_loader import read_extrinsics_binary
 from utils.point_cloud_utils import (
     align_source_to_target_icp,
     filter_points_by_distance,
+    get_camera_center_from_extrinsic,
     load_colmap_point_cloud,
     preprocess_point_cloud,
     print_point_count,
@@ -20,9 +21,8 @@ from utils.point_cloud_utils import (
     transform_points_by_camera_pose,
 )
 
-
 # Scene directory
-SCENE_NAME = "Outdoor1"
+SCENE_NAME = "Indoor4"
 INPUT_SCENE_DIR = Path("./input") / SCENE_NAME
 OUTPUT_SCENE_DIR = Path("./output") / SCENE_NAME
 
@@ -62,6 +62,7 @@ DBSCAN_EPS = 0.05
 
 APPLY_COLMAP_DOWNSAMPLE = True
 APPLY_DBSCAN_CLUSTER_REMOVAL = True
+APPLY_ICP = True
 APPLY_MERGED_DOWNSAMPLE = True
 APPLY_MERGED_OUTLIER_REMOVAL = False
 
@@ -69,7 +70,7 @@ APPLY_MERGED_OUTLIER_REMOVAL = False
 def build_arkit_point_cloud_in_arkit_world(
     frame_voxel_size: float,
     dbscan_eps: float,
-) -> o3d.geometry.PointCloud:
+) -> tuple[o3d.geometry.PointCloud, np.ndarray]:
 
     # 1. Load point clouds
     length = len(glob.glob(str(INPUT_POINTCLOUD_DIR / "*.ply")))
@@ -89,6 +90,7 @@ def build_arkit_point_cloud_in_arkit_world(
 
     # 2. Merge point clouds
     combined_point_cloud = o3d.geometry.PointCloud()
+    camera_centers: list[np.ndarray] = []
     actual_frame_end = min(FRAME_END, length)
     skipped_frames: dict[str, list[int]] = {}
 
@@ -105,6 +107,7 @@ def build_arkit_point_cloud_in_arkit_world(
             continue
 
         extr = extrinsics_by_name[image_name]
+        camera_centers.append(get_camera_center_from_extrinsic(extr))
 
         # Copy the current point cloud
         current_pcd = o3d.geometry.PointCloud(point_clouds[i])
@@ -155,7 +158,7 @@ def build_arkit_point_cloud_in_arkit_world(
             min_cluster_size=500,
         )
 
-    return combined_point_cloud
+    return combined_point_cloud, np.asarray(camera_centers)
 
 
 def merge_colmap_and_arkit_point_clouds(
@@ -164,6 +167,8 @@ def merge_colmap_and_arkit_point_clouds(
     coarse_icp_threshold: float,
     fine_icp_threshold: float,
     near_threshold: float,
+    camera_centers: np.ndarray,
+    eval_max_distance_m: float,
 ) -> o3d.geometry.PointCloud:
     
     # 1. Load the COLMAP point cloud
@@ -185,12 +190,17 @@ def merge_colmap_and_arkit_point_clouds(
     )
 
     # 3. Align the ARKit point cloud to the COLMAP point cloud via ICP
-    pcd_arkit_aligned = align_source_to_target_icp(
-        source=pcd_arkit,
-        target=pcd_colmap,
-        coarse_threshold=coarse_icp_threshold,
-        fine_threshold=fine_icp_threshold,
-    )
+    if APPLY_ICP:
+        pcd_arkit_aligned = align_source_to_target_icp(
+            source=pcd_arkit,
+            target=pcd_colmap,
+            coarse_threshold=coarse_icp_threshold,
+            fine_threshold=fine_icp_threshold,
+            eval_camera_centers=camera_centers,
+            eval_max_distance_m=eval_max_distance_m,
+        )
+    else:
+        pcd_arkit_aligned = pcd_arkit
 
     # 4. Remove COLMAP points that duplicate the aligned ARKit points
     pcd_colmap_filtered = remove_points_near_reference(
@@ -213,7 +223,7 @@ def merge_colmap_and_arkit_point_clouds(
 
 def main() -> None:
     # 1. Transform the ARKit / LiDAR point cloud into COLMAP world coordinates
-    pcd_arkit = build_arkit_point_cloud_in_arkit_world(
+    pcd_arkit, camera_centers = build_arkit_point_cloud_in_arkit_world(
         frame_voxel_size=VOXEL_SIZE,
         dbscan_eps=DBSCAN_EPS,
     )
@@ -225,6 +235,8 @@ def main() -> None:
         coarse_icp_threshold=COARSE_ICP_THRESHOLD,
         fine_icp_threshold=FINE_ICP_THRESHOLD,
         near_threshold=NEAR_THRESHOLD,
+        camera_centers=camera_centers,
+        eval_max_distance_m=MAX_DISTANCE_M,
     )
 
     # 3. Visualization
