@@ -30,16 +30,15 @@ InputDataByScene/<SCENE_NAME>/
 ```
 
 - `arkit/`: RGB images, LiDAR point clouds, and camera poses acquired via PDR (Panoramic Depth Recorder).
-- `colmap/`: COLMAP reconstruction obtained by running `colmap feature_extractor` → `colmap exhaustive_matcher` → `colmap mapper` in order.
+- `colmap/`: COLMAP reconstruction obtained by running `colmap feature_extractor` → `colmap exhaustive_matcher` → `colmap mapper`.
 
 ## Example Results
 ### Initial Point Cloud
-Multiple LiDAR point clouds captured from different viewpoints are merged into a single point cloud of the entire target scene.
+LiDAR point clouds from multiple viewpoints are integrated into a single point cloud of the scene.
 ![Initial point cloud](docs/images/03_Sensor-based_initial_point_cloud.png)
 
 ### 3D Scene Reconstruction
-The merged point cloud is used as the initial point cloud for 3D Gaussian Splatting-based methods.
-In this study, 3D scene reconstruction was performed using [3D Gaussian Splatting (3DGS)](https://github.com/graphdeco-inria/gaussian-splatting) and [MILo](https://github.com/Anttwo/MILo).
+The merged point cloud is used for initialization in 3D Gaussian Splatting-based methods. In this study, we apply it to [3DGS](https://github.com/graphdeco-inria/gaussian-splatting) and [MILo](https://github.com/Anttwo/MILo) for 3D scene reconstruction.
 ![Gaussian Splatting result](docs/images/04_3D_Scene_Reconstruction.png)
 
 ### 3D Scene Mesh
