@@ -34,7 +34,7 @@ input/<SCENE_NAME>/
 │   └── FOV/
 │
 └── colmap/
-    ├── sparse_original/          # Unaligned COLMAP model (images.bin, points3D.bin)
+    ├── sparse_original/          # Original COLMAP model before alignment to ARKit
     └── sparse_aligned_to_arkit/  # COLMAP model aligned to the ARKit coordinate system
 ```
 

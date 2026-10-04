@@ -13,7 +13,24 @@
 ![Processing pipeline](docs/images/01_System_Overview.png)
 
 ## Dataset
-The dataset collected for this study is currently being prepared for release due to its large size. It will be released soon.
+The dataset collected for this study can be downloaded [here](https://dxp8800plus-253c.jp8.ug.link/filemgr/share-download/?id=3985fdb47ae44d94a7d764dced16b659) (total size: 26.98GB).
+
+```
+InputDataByScene/<SCENE_NAME>/
+├── arkit/
+│   ├── PointCloud/       # Point cloud for each frame (1.ply, 2.ply, ...)
+│   ├── Images/
+│   ├── DepthMaps/
+│   ├── CameraTransform/  # Camera pose for each frame (1.json, 2.json, ...)
+│   └── FOV/
+│
+└── colmap/
+    ├── sparse_original/          # Original COLMAP model before alignment to ARKit
+    └── sparse_aligned_to_arkit/  # COLMAP model aligned to the ARKit coordinate system
+```
+
+- `arkit/`: RGB images, LiDAR point clouds, and camera poses acquired via PDR (Panoramic Depth Recorder).
+- `colmap/`: COLMAP reconstruction obtained by running `colmap feature_extractor` → `colmap exhaustive_matcher` → `colmap mapper` in order.
 
 ## Example Results
 ### Initial Point Cloud
